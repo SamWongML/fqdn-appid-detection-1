@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  # Training service
+  training:
+    build:
+      context: .
+      target: training
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./reports:/app/reports
+      - ./config:/app/config
+    environment:
+      - WANDB_API_KEY=${WANDB_API_KEY}
+      - WANDB_MODE=${WANDB_MODE:-online}
+      - LOG_LEVEL=INFO
+    command: >
+      python scripts/train.py
+      --labeled-data /app/data/raw/labeled_data.csv
+      --model-type ensemble
+      --cross-validate
+
+  # API service
+  api:
+    build:
+      context: .
+      target: api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models/trained:/app/models/trained:ro
+      - ./config:/app/config:ro
+    environment:
+      - MODEL_ARTIFACTS_PATH=/app/models/trained
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Batch prediction service
+  predictor:
+    build:
+      context: .
+      target: runtime
+    volumes:
+      - ./data:/app/data
+      - ./models/trained:/app/models/trained:ro
+      - ./predictions:/app/predictions
+    environment:
+      - MODEL_ARTIFACTS_PATH=/app/models/trained
+    command: >
+      python scripts/predict.py
+      --input /app/data/raw/orphans.csv
+      --output /app/predictions/predictions.csv
+      --model-name fqdn_classifier
+
+  # PostgreSQL for data source (optional)
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fqdn_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fqdn_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-fqdn_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    profiles:
+      - database
+
+  # MLflow for experiment tracking (alternative to W&B)
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.2
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    profiles:
+      - mlflow
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+  mlflow_data:

@@ -1,0 +1,253 @@
+# FQDN Orphan Detection - Model Configuration
+# Hyperparameters and model-specific settings
+
+# Model Selection
+model:
+  # Primary model type: "xgboost", "lightgbm", "catboost", "ensemble", "neural"
+  primary: "ensemble"
+  
+  # Ensemble composition (if primary=ensemble)
+  ensemble:
+    models:
+      - name: "xgboost"
+        weight: 0.4
+      - name: "lightgbm"
+        weight: 0.4
+      - name: "catboost"
+        weight: 0.2
+    voting: "soft"  # "hard" or "soft"
+    
+# XGBoost Configuration
+xgboost:
+  # Core parameters
+  objective: "multi:softprob"
+  eval_metric: "mlogloss"
+  tree_method: "hist"  # "hist" for speed, "gpu_hist" for GPU
+  device: "cpu"  # "cpu" or "cuda"
+  
+  # Tree parameters
+  n_estimators: 500
+  max_depth: 8
+  min_child_weight: 5
+  subsample: 0.8
+  colsample_bytree: 0.8
+  colsample_bylevel: 0.8
+  
+  # Learning parameters
+  learning_rate: 0.05
+  gamma: 0.1
+  reg_alpha: 0.1
+  reg_lambda: 1.0
+  
+  # Early stopping
+  early_stopping_rounds: 50
+  
+  # Regularization for large class space
+  max_delta_step: 1  # Helps with imbalanced classes
+  scale_pos_weight: 1
+  
+  # Verbosity
+  verbosity: 1
+
+# LightGBM Configuration
+lightgbm:
+  # Core parameters
+  objective: "multiclass"
+  metric: "multi_logloss"
+  boosting_type: "gbdt"
+  device: "cpu"
+  
+  # Tree parameters
+  n_estimators: 500
+  num_leaves: 128
+  max_depth: -1
+  min_child_samples: 20
+  min_child_weight: 0.001
+  
+  # Sampling parameters
+  subsample: 0.8
+  subsample_freq: 1
+  colsample_bytree: 0.8
+  
+  # Learning parameters
+  learning_rate: 0.05
+  reg_alpha: 0.1
+  reg_lambda: 1.0
+  
+  # Early stopping
+  early_stopping_rounds: 50
+  
+  # Categorical handling
+  categorical_feature: "auto"
+  
+  # Performance
+  num_threads: -1
+  verbose: -1
+
+# CatBoost Configuration
+catboost:
+  # Core parameters
+  loss_function: "MultiClass"
+  eval_metric: "MultiClass"
+  task_type: "CPU"  # "CPU" or "GPU"
+  
+  # Tree parameters
+  iterations: 500
+  depth: 8
+  min_data_in_leaf: 10
+  
+  # Learning parameters
+  learning_rate: 0.05
+  l2_leaf_reg: 3.0
+  random_strength: 1.0
+  bagging_temperature: 1.0
+  
+  # Categorical handling (CatBoost specialty)
+  cat_features: []  # Populated at runtime
+  one_hot_max_size: 25
+  
+  # Early stopping
+  early_stopping_rounds: 50
+  
+  # Verbosity
+  verbose: 100
+  
+# Neural Network Configuration (Optional)
+neural:
+  enabled: false  # Enable for deep learning approach
+  
+  architecture:
+    # Embedding layers for categorical features
+    embedding_dim: 64
+    
+    # MLP layers
+    hidden_layers: [512, 256, 128]
+    dropout: 0.3
+    batch_norm: true
+    activation: "relu"
+    
+    # Text encoder for FQDN
+    text_encoder: "tfidf"  # "tfidf", "char_cnn", "transformer"
+    text_embedding_dim: 128
+    
+  training:
+    batch_size: 256
+    epochs: 100
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    scheduler: "cosine"  # "cosine", "step", "plateau"
+    
+    # Early stopping
+    patience: 10
+    min_delta: 0.0001
+
+# Hyperparameter Optimization (Optuna)
+optimization:
+  enabled: true
+  n_trials: 100
+  timeout: 3600  # seconds
+  
+  # Optimization objective
+  objective_metric: "f1_macro"
+  direction: "maximize"
+  
+  # Pruning
+  pruner: "median"
+  n_warmup_steps: 10
+  
+  # Search spaces (model-specific)
+  search_spaces:
+    xgboost:
+      n_estimators: [100, 1000]
+      max_depth: [4, 12]
+      learning_rate: [0.01, 0.3]
+      subsample: [0.6, 1.0]
+      colsample_bytree: [0.6, 1.0]
+      min_child_weight: [1, 10]
+      gamma: [0.0, 0.5]
+      reg_alpha: [0.0, 1.0]
+      reg_lambda: [0.0, 2.0]
+      
+    lightgbm:
+      n_estimators: [100, 1000]
+      num_leaves: [31, 256]
+      learning_rate: [0.01, 0.3]
+      subsample: [0.6, 1.0]
+      colsample_bytree: [0.6, 1.0]
+      min_child_samples: [5, 50]
+      reg_alpha: [0.0, 1.0]
+      reg_lambda: [0.0, 2.0]
+
+# Cross-Validation Strategy
+cross_validation:
+  strategy: "stratified_kfold"
+  n_splits: 5
+  shuffle: true
+  
+  # For time-based data
+  time_series:
+    enabled: false
+    time_column: "ods_updated_on"
+    gap: 0
+
+# Class Imbalance Handling
+class_imbalance:
+  strategy: "class_weight"  # "none", "class_weight", "smote", "undersample"
+  
+  # SMOTE parameters (if strategy=smote)
+  smote:
+    k_neighbors: 5
+    sampling_strategy: "auto"
+    
+  # Class weight computation
+  class_weight:
+    method: "balanced"  # "balanced" or custom dict
+
+# Open-Set Recognition
+open_set:
+  enabled: true
+  
+  # Confidence threshold for "unknown" class
+  confidence_threshold: 0.3
+  
+  # Maximum entropy threshold
+  entropy_threshold: 2.0
+  
+  # Similarity-based fallback
+  fallback:
+    enabled: true
+    method: "embedding_similarity"  # "embedding_similarity", "rule_based"
+    similarity_threshold: 0.85
+
+# Model Persistence
+persistence:
+  format: "joblib"  # "joblib", "pickle", "onnx"
+  compression: 3  # 0-9, higher = more compression
+  
+  # Model versioning
+  versioning:
+    enabled: true
+    strategy: "semantic"  # "semantic", "timestamp", "hash"
+    
+  # Artifact storage
+  artifacts:
+    save_feature_names: true
+    save_label_encoder: true
+    save_preprocessing_pipeline: true
+    save_threshold_calibration: true
+
+# Inference Configuration
+inference:
+  batch_size: 1000
+  
+  # Output format
+  output:
+    include_probabilities: true
+    include_top_k: true
+    top_k: 5
+    include_confidence: true
+    include_explanation: false  # SHAP explanations (slow)
+    
+  # Caching
+  cache_predictions: true
+  cache_ttl: 3600

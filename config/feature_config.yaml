@@ -1,0 +1,388 @@
+# FQDN Orphan Detection - Feature Engineering Configuration
+# Defines all feature transformations and selections
+
+# Feature Groups
+feature_groups:
+  # Primary features (always used)
+  primary:
+    enabled: true
+    features:
+      - "fqdn"
+      - "record_type"
+      - "record_data"
+      - "fqdn_source"
+      - "fqdn_status"
+      
+  # Domain-derived features (extracted from FQDN)
+  domain_derived:
+    enabled: true
+    features:
+      - "bus_domain"
+      - "bus_sub_domain"
+      - "domain_name"
+      - "country_code"
+      - "num_dots"
+      
+  # Business context features
+  business:
+    enabled: true
+    features:
+      - "brand"
+      - "product"
+      - "market"
+      - "market_group"
+      - "client_channel"
+      - "primary_channel"
+      
+  # Technical features
+  technical:
+    enabled: true
+    features:
+      - "tech_environment"
+      - "category"
+      - "nameserver"
+      
+  # Override features (human-verified, highest confidence)
+  override:
+    enabled: true
+    priority_weight: 2.0  # Higher weight for verified features
+    features:
+      - "override_appid"
+      - "override_appserviceid"
+      - "override_itso_id"
+      - "override_itso_name"
+      - "override_brand"
+      - "override_product"
+      - "override_market"
+      - "override_buslevel4"
+      - "override_buslevel5"
+      - "override_buslevel6"
+      - "override_product_line"
+      
+  # Organizational hierarchy
+  org_hierarchy:
+    enabled: true
+    features:
+      - "itso_id"
+      - "itso_name"
+      - "delegate_itso_id"
+      - "delegate_itso_name"
+      - "buslevel4"
+      - "buslevel5"
+      - "buslevel6"
+      - "itdevlevel4"
+      - "itdevlevel5"
+      - "itdevlevel6"
+      
+  # Scan/prediction features (auxiliary)
+  auxiliary:
+    enabled: false  # Optional - enable if available
+    features:
+      - "scan_result"
+      - "predicated_treatment"
+      - "predicated_treatment_tags"
+      - "predicated_liveweb_tags"
+      - "predicated_demised_tags"
+
+# FQDN Text Feature Engineering
+fqdn_features:
+  # Raw FQDN processing
+  preprocessing:
+    lowercase: true
+    strip_whitespace: true
+    remove_trailing_dot: true
+    
+  # Structural features
+  structural:
+    enabled: true
+    features:
+      - length: "Total character length"
+      - num_dots: "Number of dots"
+      - num_hyphens: "Number of hyphens"
+      - num_digits: "Number of digits"
+      - max_label_length: "Maximum label length"
+      - avg_label_length: "Average label length"
+      - has_www: "Starts with www"
+      - depth: "Subdomain depth"
+      
+  # Domain extraction (using tldextract)
+  domain_extraction:
+    enabled: true
+    features:
+      - tld: "Top-level domain"
+      - domain: "Registered domain"
+      - subdomain: "Subdomain"
+      - suffix: "Public suffix"
+      
+  # Pattern matching
+  patterns:
+    enabled: true
+    # Environment indicators
+    env_patterns:
+      - pattern: "(dev|development)"
+        feature: "is_dev"
+      - pattern: "(stg|stage|staging)"
+        feature: "is_staging"
+      - pattern: "(uat|qa|test)"
+        feature: "is_uat"
+      - pattern: "(prod|production|prd)"
+        feature: "is_prod"
+      - pattern: "(dr|disaster)"
+        feature: "is_dr"
+        
+    # Service type indicators
+    service_patterns:
+      - pattern: "(api|rest|graphql)"
+        feature: "is_api"
+      - pattern: "(www|web|portal)"
+        feature: "is_web"
+      - pattern: "(cdn|static|assets)"
+        feature: "is_cdn"
+      - pattern: "(mail|smtp|imap)"
+        feature: "is_email"
+      - pattern: "(db|database|mysql|postgres)"
+        feature: "is_database"
+      - pattern: "(admin|manage|console)"
+        feature: "is_admin"
+        
+    # Region indicators
+    region_patterns:
+      - pattern: "(uk|gb|london)"
+        feature: "region_uk"
+      - pattern: "(us|usa|america)"
+        feature: "region_us"
+      - pattern: "(hk|hongkong|hong-kong)"
+        feature: "region_hk"
+      - pattern: "(sg|singapore)"
+        feature: "region_sg"
+      - pattern: "(eu|europe)"
+        feature: "region_eu"
+      - pattern: "(apac|asia)"
+        feature: "region_apac"
+      - pattern: "(menat|middle-east)"
+        feature: "region_menat"
+
+  # N-gram features for FQDN text
+  ngrams:
+    enabled: true
+    char_ngrams:
+      min_n: 2
+      max_n: 4
+      max_features: 500
+      analyzer: "char_wb"
+      
+    word_ngrams:
+      enabled: true
+      min_n: 1
+      max_n: 2
+      max_features: 200
+      # Split on dots and hyphens
+      token_pattern: "[a-zA-Z0-9]+"
+
+  # TF-IDF on FQDN components
+  tfidf:
+    enabled: true
+    max_features: 1000
+    min_df: 2
+    max_df: 0.95
+    sublinear_tf: true
+    # Components to vectorize
+    components:
+      - full_fqdn
+      - subdomain
+      - domain
+      
+  # Embeddings (optional - requires more compute)
+  embeddings:
+    enabled: false
+    method: "fasttext"  # "fasttext", "word2vec", "char_embedding"
+    dim: 64
+    pretrained: null  # Path to pretrained model
+
+# Record Data Feature Engineering
+record_data_features:
+  enabled: true
+  
+  # Extract features from record_data (DNS target)
+  features:
+    - is_internal: "Points to internal domain"
+    - is_aws: "Points to AWS"
+    - is_azure: "Points to Azure"
+    - is_gcp: "Points to GCP"
+    - is_cloudflare: "Points to Cloudflare"
+    - is_akamai: "Points to Akamai"
+    - target_tld: "Target TLD"
+    - target_depth: "Target subdomain depth"
+    
+  # Cloud provider patterns
+  cloud_patterns:
+    aws:
+      - "amazonaws.com"
+      - "awsglobalaccelerator.com"
+      - "cloudfront.net"
+    azure:
+      - "azure.com"
+      - "azurewebsites.net"
+      - "trafficmanager.net"
+    gcp:
+      - "googleapis.com"
+      - "appspot.com"
+      - "cloudfunctions.net"
+
+# Categorical Feature Encoding
+categorical_encoding:
+  # Default encoding strategy
+  default_strategy: "label"  # "onehot", "label", "target", "frequency"
+  
+  # Per-feature encoding
+  feature_encodings:
+    record_type:
+      strategy: "onehot"
+      handle_unknown: "ignore"
+      
+    fqdn_source:
+      strategy: "onehot"
+      handle_unknown: "ignore"
+      
+    fqdn_status:
+      strategy: "onehot"
+      handle_unknown: "ignore"
+      
+    country_code:
+      strategy: "target"  # Target encoding for high cardinality
+      smoothing: 10
+      handle_unknown: "prior"
+      
+    market:
+      strategy: "target"
+      smoothing: 10
+      handle_unknown: "prior"
+      
+    brand:
+      strategy: "target"
+      smoothing: 10
+      handle_unknown: "prior"
+      
+    bus_domain:
+      strategy: "frequency"  # Too many unique values
+      handle_unknown: "ignore"
+      
+    tech_environment:
+      strategy: "onehot"
+      handle_unknown: "ignore"
+      
+    # Organizational features
+    itso_id:
+      strategy: "target"
+      smoothing: 5
+      handle_unknown: "prior"
+      
+    buslevel4:
+      strategy: "target"
+      smoothing: 5
+      handle_unknown: "prior"
+      
+    buslevel5:
+      strategy: "target"
+      smoothing: 5
+      handle_unknown: "prior"
+      
+  # Handling high cardinality
+  high_cardinality:
+    threshold: 100  # Features with more unique values
+    strategy: "target"  # Always use target encoding
+    min_samples_leaf: 10
+
+# Numerical Feature Processing
+numerical_processing:
+  # Scaling strategy
+  scaling:
+    default: "standard"  # "standard", "minmax", "robust", "none"
+    
+  # Per-feature scaling
+  feature_scaling:
+    num_dots: "none"  # Already small integers
+    length: "standard"
+    
+  # Missing value handling
+  missing:
+    strategy: "median"  # "mean", "median", "constant", "knn"
+    constant_value: -1
+    
+  # Outlier handling
+  outliers:
+    enabled: true
+    method: "clip"  # "clip", "winsorize", "remove"
+    lower_quantile: 0.01
+    upper_quantile: 0.99
+
+# Feature Interactions
+feature_interactions:
+  enabled: true
+  
+  # Automatic interaction detection
+  auto_detect: false  # Computationally expensive
+  
+  # Manual interactions
+  manual_interactions:
+    - features: ["market", "brand"]
+      method: "concatenate"
+      name: "market_brand"
+      
+    - features: ["tech_environment", "fqdn_status"]
+      method: "concatenate"
+      name: "env_status"
+      
+    - features: ["bus_domain", "country_code"]
+      method: "concatenate"
+      name: "domain_country"
+
+# Feature Selection
+feature_selection:
+  enabled: true
+  
+  # Selection strategy
+  strategy: "importance"  # "importance", "correlation", "variance", "recursive"
+  
+  # Importance-based selection
+  importance:
+    method: "permutation"  # "permutation", "shap", "model_native"
+    threshold: 0.001
+    max_features: null  # null = no limit
+    
+  # Correlation-based filtering
+  correlation:
+    enabled: true
+    threshold: 0.95  # Remove features with correlation > threshold
+    
+  # Variance filtering
+  variance:
+    enabled: true
+    threshold: 0.01  # Remove low variance features
+    
+  # Recursive feature elimination
+  rfe:
+    enabled: false
+    n_features_to_select: 100
+    step: 10
+
+# Feature Store Configuration
+feature_store:
+  enabled: false
+  
+  # Caching computed features
+  cache:
+    enabled: true
+    backend: "disk"  # "disk", "redis"
+    path: ".feature_cache/"
+    ttl: 86400  # 24 hours
+
+# Output Configuration
+output:
+  # Feature matrix settings
+  sparse: false  # Use sparse matrices for text features
+  dtype: "float32"  # "float32", "float64"
+  
+  # Feature metadata
+  save_metadata: true
+  metadata_path: "models/feature_metadata.json"
