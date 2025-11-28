@@ -77,3 +77,6 @@ dev = [
     "pytest-cov>=4.1.0",
     "ruff>=0.1.9",
 ]
+
+[tool.uv]
+package = true
