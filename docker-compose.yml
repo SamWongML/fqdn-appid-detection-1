@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # Training service
@@ -12,8 +12,8 @@ services:
       - ./reports:/app/reports
       - ./config:/app/config
     environment:
-      - WANDB_API_KEY=${WANDB_API_KEY}
-      - WANDB_MODE=${WANDB_MODE:-online}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      - MLFLOW_EXPERIMENT_NAME=${MLFLOW_EXPERIMENT_NAME:-fqdn-orphan-detection}
       - LOG_LEVEL=INFO
     command: >
       python scripts/train.py

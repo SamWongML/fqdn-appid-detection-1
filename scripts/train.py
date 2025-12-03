@@ -14,7 +14,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.config.settings import get_settings
 from src.training.trainer import Trainer
 from src.utils.helpers import set_seed, timer
 from src.utils.logger import get_logger, setup_logger
@@ -25,9 +24,14 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--labeled-data", type=str, help="Path to labeled CSV data")
     parser.add_argument("--unlabeled-data", type=str, help="Path to unlabeled CSV data")
-    parser.add_argument("--source", type=str, choices=["csv", "postgres", "auto"], default="auto")
     parser.add_argument(
-        "--model-type", type=str, choices=["xgboost", "lightgbm", "catboost", "ensemble"], default="ensemble"
+        "--source", type=str, choices=["csv", "postgres", "auto"], default="auto"
+    )
+    parser.add_argument(
+        "--model-type",
+        type=str,
+        choices=["xgboost", "lightgbm", "catboost", "ensemble"],
+        default="ensemble",
     )
     parser.add_argument("--model-name", type=str, default="fqdn_classifier")
     parser.add_argument("--cross-validate", action="store_true")
@@ -35,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--optimize", action="store_true")
     parser.add_argument("--n-trials", type=int, default=50)
     parser.add_argument("--experiment-name", type=str)
-    parser.add_argument("--no-wandb", action="store_true")
+    parser.add_argument("--no-mlflow", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--debug", action="store_true")
 
@@ -56,7 +60,9 @@ def main():
 
     set_seed(args.seed)
 
-    trainer = Trainer(experiment_name=args.experiment_name, use_wandb=not args.no_wandb)
+    trainer = Trainer(
+        experiment_name=args.experiment_name, use_mlflow=not args.no_mlflow
+    )
 
     try:
         # Load data
@@ -75,7 +81,9 @@ def main():
         # Split data
         from sklearn.model_selection import train_test_split
 
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.15, stratify=y, random_state=args.seed)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.15, stratify=y, random_state=args.seed
+        )
         X_train, X_val, y_train, y_val = train_test_split(
             X_train, y_train, test_size=0.176, stratify=y_train, random_state=args.seed
         )
@@ -84,7 +92,9 @@ def main():
 
         # Cross-validation (optional)
         if args.cross_validate:
-            trainer.cross_validate(X_train, y_train, n_splits=args.cv_folds, model_type=args.model_type)
+            trainer.cross_validate(
+                X_train, y_train, n_splits=args.cv_folds, model_type=args.model_type
+            )
 
         # Hyperparameter optimization (optional)
         if args.optimize:
@@ -94,11 +104,15 @@ def main():
                 X_val,
                 y_val,
                 n_trials=args.n_trials,
-                model_type=args.model_type if args.model_type != "ensemble" else "xgboost",
+                model_type=args.model_type
+                if args.model_type != "ensemble"
+                else "xgboost",
             )
 
         # Train final model
-        model = trainer.train(X_train, y_train, X_val, y_val, model_type=args.model_type)
+        model = trainer.train(
+            X_train, y_train, X_val, y_val, model_type=args.model_type
+        )
 
         # Evaluate on test set
         from src.evaluation.evaluator import Evaluator
@@ -109,7 +123,9 @@ def main():
         # Save report
         reports_dir = Path("reports")
         reports_dir.mkdir(exist_ok=True)
-        evaluator.save_report(test_results, reports_dir / f"{args.model_name}_evaluation.json")
+        evaluator.save_report(
+            test_results, reports_dir / f"{args.model_name}_evaluation.json"
+        )
 
         # Save model
         model_path = trainer.save_model(model_name=args.model_name)

@@ -47,7 +47,7 @@ dependencies = [
     "tldextract>=5.1.0",
     "tqdm>=4.66.0",
     "uvicorn>=0.25.0",
-    "wandb>=0.16.0",
+    "mlflow>=2.9.0",
     "xgboost>=2.0.0",
 ]
 
@@ -80,3 +80,13 @@ dev = [
 
 [tool.uv]
 package = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu" },
+]

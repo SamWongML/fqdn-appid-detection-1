@@ -29,3 +29,7 @@ catboost_info/
 .env
 .coverage
 htmlcov/
+
+# Data and Logs
+data/
+mlruns/

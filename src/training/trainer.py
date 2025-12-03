@@ -4,16 +4,14 @@ Training Module
 Provides comprehensive training pipeline with:
 - Cross-validation
 - Hyperparameter optimization (Optuna)
-- Experiment tracking (Weights & Biases)
+- Experiment tracking (MLflow)
 - Early stopping
 - Model checkpointing
 """
 
-
-
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import polars as pl
@@ -21,10 +19,10 @@ from sklearn.model_selection import StratifiedKFold
 
 from src.config.settings import Settings, get_settings
 from src.data.data_loader import DataLoader, create_data_loader
-from src.data.preprocessor import DataPreprocessor, preprocess_pipeline
+from src.data.preprocessor import DataPreprocessor
 from src.features.feature_pipeline import FeaturePipeline, create_feature_pipeline
 from src.models.base_model import BaseModel, create_model
-from src.models.ensemble import EnsembleModel, create_ensemble
+from src.models.ensemble import create_ensemble
 from src.utils.helpers import ClassMapping, set_seed, timer
 from src.utils.logger import get_logger
 from src.utils.storage import ModelStorage
@@ -49,7 +47,7 @@ class Trainer:
         self,
         settings: Settings | None = None,
         experiment_name: str | None = None,
-        use_wandb: bool = True,
+        use_mlflow: bool = True,
     ):
         """
         Initialize trainer.
@@ -57,13 +55,13 @@ class Trainer:
         Args:
             settings: Application settings
             experiment_name: Name for experiment tracking
-            use_wandb: Whether to use Weights & Biases
+            use_mlflow: Whether to use MLflow
         """
         self.settings = settings or get_settings()
         self.experiment_name = (
             experiment_name or f"fqdn_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         )
-        self.use_wandb = use_wandb and self.settings.wandb.enabled
+        self.use_mlflow = use_mlflow and self.settings.mlflow.enabled
 
         # Set seed for reproducibility
         set_seed(self.settings.seed)
@@ -81,43 +79,47 @@ class Trainer:
         # Metrics history
         self.metrics_history: list[dict[str, Any]] = []
 
-        # W&B run
-        self._wandb_run = None
+        # MLflow run
+        self._mlflow_run = None
 
-    def _init_wandb(self) -> None:
-        """Initialize Weights & Biases tracking."""
-        if not self.use_wandb:
+    def _init_mlflow(self) -> None:
+        """Initialize MLflow tracking."""
+        if not self.use_mlflow:
             return
 
         try:
-            import wandb
+            import mlflow
 
-            self._wandb_run = wandb.init(
-                project=self.settings.wandb.project,
-                entity=self.settings.wandb.entity,
-                name=self.experiment_name,
-                config={
+            mlflow.set_tracking_uri(self.settings.mlflow.tracking_uri)
+            mlflow.set_experiment(self.settings.mlflow.experiment_name)
+
+            self._mlflow_run = mlflow.start_run(run_name=self.experiment_name)
+
+            # Log params
+            mlflow.log_params(
+                {
                     "model": self.settings.model.primary,
                     "seed": self.settings.seed,
-                    "features": {
-                        "tfidf_max_features": self.settings.features.tfidf_max_features,
-                    },
-                },
-                tags=self.settings.wandb.tags,
-                mode=self.settings.wandb.mode,
+                    "features_tfidf_max_features": self.settings.features.tfidf_max_features,
+                }
             )
-            logger.info(f"W&B initialized: {wandb.run.url}")
+
+            # Set tags
+            for tag in self.settings.mlflow.tags:
+                mlflow.set_tag("tag", tag)
+
+            logger.info(f"MLflow initialized: {mlflow.get_tracking_uri()}")
 
         except Exception as e:
-            logger.warning(f"Failed to initialize W&B: {e}")
-            self.use_wandb = False
+            logger.warning(f"Failed to initialize MLflow: {e}")
+            self.use_mlflow = False
 
-    def _log_wandb(self, metrics: dict[str, Any], step: int | None = None) -> None:
-        """Log metrics to W&B."""
-        if self._wandb_run:
-            import wandb
+    def _log_mlflow(self, metrics: dict[str, Any], step: int | None = None) -> None:
+        """Log metrics to MLflow."""
+        if self._mlflow_run:
+            import mlflow
 
-            wandb.log(metrics, step=step)
+            mlflow.log_metrics(metrics, step=step)
 
     @timer("Loading data")
     def load_data(
@@ -246,7 +248,7 @@ class Trainer:
         Returns:
             Trained model
         """
-        self._init_wandb()
+        self._init_mlflow()
 
         if model_type == "ensemble":
             self.model = create_ensemble()
@@ -259,7 +261,7 @@ class Trainer:
         if X_val is not None and y_val is not None:
             val_metrics = self._evaluate(X_val, y_val)
             logger.info(f"Validation metrics: {val_metrics}")
-            self._log_wandb({"val/" + k: v for k, v in val_metrics.items()})
+            self._log_mlflow({"val_" + k: v for k, v in val_metrics.items()})
 
         return self.model
 
@@ -310,7 +312,7 @@ class Trainer:
         Returns:
             Dictionary of metrics for each fold
         """
-        self._init_wandb()
+        self._init_mlflow()
 
         cv = StratifiedKFold(
             n_splits=n_splits, shuffle=True, random_state=self.settings.seed
@@ -344,7 +346,7 @@ class Trainer:
             for key, value in metrics.items():
                 fold_metrics[key].append(value)
 
-            self._log_wandb({f"cv/fold_{fold}/{k}": v for k, v in metrics.items()})
+            self._log_mlflow({f"cv_fold_{fold}_{k}": v for k, v in metrics.items()})
 
         # Log summary statistics
         summary = {}
@@ -353,7 +355,7 @@ class Trainer:
             summary[f"cv/{key}_std"] = np.std(values)
             logger.info(f"CV {key}: {np.mean(values):.4f} ± {np.std(values):.4f}")
 
-        self._log_wandb(summary)
+        self._log_mlflow(summary)
 
         return fold_metrics
 
@@ -404,7 +406,7 @@ class Trainer:
             Best hyperparameters
         """
         import optuna
-        from optuna.integration import WeightsAndBiasesCallback
+        from optuna.integration.mlflow import MLflowCallback
 
         def objective(trial: optuna.Trial) -> float:
             # Define search space based on model type
@@ -455,11 +457,16 @@ class Trainer:
             direction="maximize", study_name=self.experiment_name
         )
 
-        # Add W&B callback if enabled
+        # Add MLflow callback if enabled
         callbacks = []
-        if self.use_wandb:
+        if self.use_mlflow:
             try:
-                callbacks.append(WeightsAndBiasesCallback())
+                callbacks.append(
+                    MLflowCallback(
+                        tracking_uri=self.settings.mlflow.tracking_uri,
+                        metric_name="f1_macro",
+                    )
+                )
             except Exception:
                 pass
 
@@ -522,35 +529,35 @@ class Trainer:
             artifacts=artifacts,
         )
 
-        # Log to W&B
-        if self._wandb_run:
-            import wandb
+        # Log to MLflow
+        if self._mlflow_run:
+            import mlflow
 
-            wandb.save(str(Path(path) / "*"))
+            mlflow.log_artifacts(path)
 
         return path
 
     def finish(self) -> None:
         """Finish training and cleanup."""
-        if self._wandb_run:
-            import wandb
+        if self._mlflow_run:
+            import mlflow
 
-            wandb.finish()
-            self._wandb_run = None
+            mlflow.end_run()
+            self._mlflow_run = None
 
 
 def create_trainer(
     experiment_name: str | None = None,
-    use_wandb: bool = True,
+    use_mlflow: bool = True,
 ) -> Trainer:
     """
     Factory function to create a trainer.
 
     Args:
         experiment_name: Experiment name
-        use_wandb: Whether to use W&B
+        use_mlflow: Whether to use MLflow
 
     Returns:
         Trainer instance
     """
-    return Trainer(experiment_name=experiment_name, use_wandb=use_wandb)
+    return Trainer(experiment_name=experiment_name, use_mlflow=use_mlflow)

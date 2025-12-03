@@ -19,7 +19,7 @@ This system addresses the challenge of orphan DNS records - FQDNs that exist in 
 - **Confidence scoring** with uncertainty detection
 - **Top-k predictions** for manual review
 - **Open-set recognition** for truly unknown FQDNs
-- **Experiment tracking** with Weights & Biases
+- **Experiment tracking** with MLflow
 - **Production API** with FastAPI
 - **Docker containerization** for deployment
 
@@ -45,7 +45,7 @@ uv sync
 # Basic training
 uv run python scripts/train.py --labeled-data data/raw/labeled.csv
 
-# With cross-validation and W&B tracking
+# With cross-validation and MLflow tracking
 uv run python scripts/train.py \
     --labeled-data data/raw/labeled.csv \
     --model-type ensemble \
@@ -207,17 +207,21 @@ docker-compose --profile monitoring up
 
 ## Experiment Tracking
 
-The system integrates with Weights & Biases for experiment tracking:
+The system integrates with MLflow for experiment tracking:
 
 ```bash
-# Set W&B API key
-export WANDB_API_KEY=your_api_key
+# Set MLflow tracking URI (optional, defaults to ./mlruns)
+export MLFLOW_TRACKING_URI=http://localhost:5000
 
 # Run training with tracking
 uv run python scripts/train.py --experiment-name "my_experiment"
 ```
 
-View experiments at: https://wandb.ai/your-entity/fqdn-orphan-detection
+View experiments by running:
+
+```bash
+mlflow ui
+```
 
 ## Testing
 

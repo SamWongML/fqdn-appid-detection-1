@@ -4,9 +4,9 @@ from src.config.settings import (
     DatabaseSettings,
     DataSettings,
     FeatureSettings,
+    MLflowSettings,
     ModelSettings,
     Settings,
-    WandbSettings,
     get_settings,
     load_yaml_config,
 )
@@ -17,7 +17,7 @@ __all__ = [
     "DataSettings",
     "ModelSettings",
     "FeatureSettings",
-    "WandbSettings",
+    "MLflowSettings",
     "get_settings",
     "load_yaml_config",
 ]

@@ -5,8 +5,6 @@ Provides centralized configuration management using Pydantic for validation
 and YAML files for persistence. Supports environment variable overrides.
 """
 
-
-
 import os
 import re
 from functools import lru_cache
@@ -14,8 +12,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load environment variables
+load_dotenv()
 
 # ============================================================================
 # Helper Functions
@@ -342,13 +344,12 @@ class InferenceSettings(BaseModel):
     cache_ttl: int = 3600
 
 
-class WandbSettings(BaseModel):
-    """Weights & Biases experiment tracking settings."""
+class MLflowSettings(BaseModel):
+    """MLflow experiment tracking settings."""
 
     enabled: bool = True
-    project: str = "fqdn-orphan-detection"
-    entity: str | None = None
-    mode: Literal["online", "offline", "disabled"] = "online"
+    tracking_uri: str = "mlruns"
+    experiment_name: str = "fqdn-orphan-detection"
     tags: list[str] = ["fqdn", "classification", "production"]
     log_artifacts: list[str] = ["model", "config", "metrics", "confusion_matrix"]
 
@@ -467,7 +468,7 @@ class Settings(BaseSettings):
     )
     open_set: OpenSetSettings = Field(default_factory=OpenSetSettings)
     inference: InferenceSettings = Field(default_factory=InferenceSettings)
-    wandb: WandbSettings = Field(default_factory=WandbSettings)
+    mlflow: MLflowSettings = Field(default_factory=MLflowSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     features: FeatureSettings = Field(default_factory=FeatureSettings)
 
