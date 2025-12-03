@@ -33,3 +33,4 @@ htmlcov/
 # Data and Logs
 data/
 mlruns/
+scripts/generate_dummy_data.py
