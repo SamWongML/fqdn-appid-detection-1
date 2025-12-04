@@ -34,3 +34,5 @@ htmlcov/
 data/
 mlruns/
 scripts/generate_dummy_data.py
+models/
+reports/

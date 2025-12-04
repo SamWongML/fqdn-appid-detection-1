@@ -7,8 +7,6 @@ Wrapper for CatBoost classifier with:
 - Robust to overfitting
 """
 
-
-
 from typing import Any
 
 import numpy as np
@@ -41,6 +39,7 @@ class CatBoostModel(BaseModel):
         min_data_in_leaf: int = 10,
         random_strength: float = 1.0,
         bagging_temperature: float = 1.0,
+        colsample_bylevel: float | None = None,
         one_hot_max_size: int = 25,
         early_stopping_rounds: int = 50,
         task_type: str = "CPU",
@@ -60,6 +59,7 @@ class CatBoostModel(BaseModel):
             min_data_in_leaf: Minimum samples in leaf
             random_strength: Random strength for scoring
             bagging_temperature: Bayesian bootstrap temperature
+            colsample_bylevel: Feature subsampling ratio
             one_hot_max_size: Max size for one-hot encoding
             early_stopping_rounds: Rounds for early stopping
             task_type: CPU or GPU
@@ -75,32 +75,41 @@ class CatBoostModel(BaseModel):
         self.min_data_in_leaf = min_data_in_leaf
         self.random_strength = random_strength
         self.bagging_temperature = bagging_temperature
+        self.colsample_bylevel = colsample_bylevel
         self.one_hot_max_size = one_hot_max_size
         self.early_stopping_rounds = early_stopping_rounds
         self.task_type = task_type
         self.verbose = verbose
+        self.kwargs = kwargs
 
         self._best_iteration: int | None = None
         self._cat_features: list[int | None] = None
 
     def _create_model(self) -> CatBoostClassifier:
         """Create CatBoost model instance."""
-        return CatBoostClassifier(
-            iterations=self.iterations,
-            depth=self.depth,
-            learning_rate=self.learning_rate,
-            l2_leaf_reg=self.l2_leaf_reg,
-            min_data_in_leaf=self.min_data_in_leaf,
-            random_strength=self.random_strength,
-            bagging_temperature=self.bagging_temperature,
-            one_hot_max_size=self.one_hot_max_size,
-            loss_function="MultiClass",
-            eval_metric="MultiClass",
-            task_type=self.task_type,
-            random_seed=self.random_state,
-            verbose=self.verbose,
-            early_stopping_rounds=self.early_stopping_rounds,
-        )
+        params = {
+            "iterations": self.iterations,
+            "depth": self.depth,
+            "learning_rate": self.learning_rate,
+            "l2_leaf_reg": self.l2_leaf_reg,
+            "min_data_in_leaf": self.min_data_in_leaf,
+            "random_strength": self.random_strength,
+            "bagging_temperature": self.bagging_temperature,
+            "colsample_bylevel": self.colsample_bylevel,
+            "one_hot_max_size": self.one_hot_max_size,
+            "loss_function": "MultiClass",
+            "eval_metric": "MultiClass",
+            "task_type": self.task_type,
+            "random_seed": self.random_state,
+            "verbose": self.verbose,
+            "early_stopping_rounds": self.early_stopping_rounds,
+            **self.kwargs,
+        }
+
+        # Remove None values
+        params = {k: v for k, v in params.items() if v is not None}
+
+        return CatBoostClassifier(**params)
 
     def fit(
         self,

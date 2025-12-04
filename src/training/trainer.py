@@ -104,6 +104,18 @@ class Trainer:
                 }
             )
 
+            # Enable autologging for supported libraries
+            # This allows real-time metrics to be visible in MLflow UI
+            try:
+                if hasattr(mlflow, "xgboost"):
+                    mlflow.xgboost.autolog(log_models=False, silent=True)
+                if hasattr(mlflow, "lightgbm"):
+                    mlflow.lightgbm.autolog(log_models=False, silent=True)
+                if hasattr(mlflow, "catboost"):
+                    mlflow.catboost.autolog(log_models=False, silent=True)
+            except Exception as e:
+                logger.warning(f"Failed to enable autologging: {e}")
+
             # Set tags
             for tag in self.settings.mlflow.tags:
                 mlflow.set_tag("tag", tag)
@@ -255,7 +267,39 @@ class Trainer:
         else:
             self.model = create_model(model_type)
 
-        self.model.fit(X_train, y_train, X_val, y_val)
+        # Identify categorical features for CatBoost
+        categorical_features = None
+        if self.feature_pipeline and self.feature_pipeline.feature_names:
+            # Get indices of categorical features
+            # This assumes features from CategoricalEncoder are what we want
+            # Note: CatBoost expects indices of columns in X that are categorical
+            # Since our pipeline does one-hot or label encoding, we need to be careful.
+            # If using label encoding (which is best for CatBoost), we should pass those indices.
+
+            # For now, let's look at feature names that come from categorical encoder
+            if (
+                hasattr(self.feature_pipeline, "categorical_encoder")
+                and self.feature_pipeline.categorical_encoder
+            ):
+                cat_feature_names = set(
+                    self.feature_pipeline.categorical_encoder.feature_names
+                )
+                categorical_features = [
+                    i
+                    for i, name in enumerate(self.feature_pipeline.feature_names)
+                    if name in cat_feature_names
+                ]
+
+        self.model.fit(
+            X_train,
+            y_train,
+            X_val,
+            y_val,
+            feature_names=self.feature_pipeline.feature_names
+            if self.feature_pipeline
+            else None,
+            categorical_features=categorical_features,
+        )
 
         # Evaluate on validation set
         if X_val is not None and y_val is not None:

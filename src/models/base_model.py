@@ -9,8 +9,6 @@ Provides unified interface for different ML models:
 All models implement the same interface for easy swapping and ensembling.
 """
 
-
-
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
@@ -169,7 +167,7 @@ class XGBoostModel(BaseModel):
         """Fit XGBoost model."""
         import xgboost as xgb
 
-        logger.info(f"Training XGBoost model...")
+        logger.info("Training XGBoost model...")
 
         # Store class info
         self._classes = np.unique(y_train)
@@ -263,7 +261,7 @@ class LightGBMModel(BaseModel):
         """Fit LightGBM model."""
         import lightgbm as lgb
 
-        logger.info(f"Training LightGBM model...")
+        logger.info("Training LightGBM model...")
 
         # Store class info
         self._classes = np.unique(y_train)
@@ -362,7 +360,7 @@ class CatBoostModel(BaseModel):
         """Fit CatBoost model."""
         from catboost import CatBoostClassifier
 
-        logger.info(f"Training CatBoost model...")
+        logger.info("Training CatBoost model...")
 
         # Store class info
         self._classes = np.unique(y_train)
