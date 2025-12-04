@@ -248,6 +248,8 @@ class LightGBMSettings(BaseModel):
     categorical_feature: str = "auto"
     num_threads: int = -1
     verbose: int = -1
+    class_weight: str | dict | None = None
+    is_unbalance: bool = False
 
 
 class CatBoostSettings(BaseModel):

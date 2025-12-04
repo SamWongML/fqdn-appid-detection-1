@@ -246,6 +246,8 @@ class LightGBMModel(BaseModel):
             "random_state": 42,
             "n_jobs": self.settings.num_threads,
             "verbose": self.settings.verbose,
+            "class_weight": self.settings.class_weight,
+            "is_unbalance": self.settings.is_unbalance,
         }
         params.update(kwargs)
         return params
