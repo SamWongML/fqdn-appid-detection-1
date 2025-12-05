@@ -8,20 +8,221 @@ Comprehensive feature extraction for FQDN classification including:
 - Domain pattern extraction
 """
 
-
-
 import re
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 import polars as pl
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler
 
-from src.utils.helpers import timer
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class AppDescriptionVectorizer:
+    """
+    TF-IDF vectorization of app descriptions for business context.
+
+    Extracts semantic features from the 'appdesc' field to capture
+    business domain information like "email gateway", "trading platform", etc.
+    """
+
+    # Key business keywords to detect as binary features
+    BUSINESS_KEYWORDS = [
+        "trading",
+        "payment",
+        "customer",
+        "portal",
+        "gateway",
+        "email",
+        "security",
+        "risk",
+        "compliance",
+        "authentication",
+        "mobile",
+        "website",
+        "api",
+        "internal",
+        "external",
+        "banking",
+        "retail",
+        "corporate",
+        "wealth",
+        "insurance",
+        "loan",
+        "credit",
+        "deposit",
+        "transaction",
+        "transfer",
+    ]
+
+    def __init__(
+        self,
+        max_features: int = 100,
+        min_df: int = 2,
+        max_df: float = 0.9,
+    ):
+        self.max_features = max_features
+        self.min_df = min_df
+        self.max_df = max_df
+        self._vectorizer: TfidfVectorizer | None = None
+        self._feature_names: list[str] = []
+        self._fitted = False
+
+    def _preprocess_text(self, text: str) -> str:
+        """Preprocess app description text."""
+        if not text:
+            return ""
+        # Remove special characters, lowercase
+        text = re.sub(r"<CR>", " ", text)  # Remove carriage return markers
+        text = re.sub(r"[^\w\s]", " ", text.lower())
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
+    def fit(
+        self, texts: list[str], column_name: str = "appdesc"
+    ) -> "AppDescriptionVectorizer":
+        """Fit the TF-IDF vectorizer on app descriptions."""
+        processed = [self._preprocess_text(t) for t in texts]
+
+        self._vectorizer = TfidfVectorizer(
+            max_features=self.max_features,
+            min_df=self.min_df,
+            max_df=self.max_df,
+            ngram_range=(1, 2),
+            analyzer="word",
+            sublinear_tf=True,
+            stop_words="english",
+        )
+        self._vectorizer.fit(processed)
+
+        vocab = self._vectorizer.get_feature_names_out()
+        self._feature_names = [f"{column_name}_tfidf_{v}" for v in vocab]
+        self._fitted = True
+        return self
+
+    def transform(self, texts: list[str]) -> np.ndarray:
+        """Transform app descriptions to TF-IDF features."""
+        if not self._fitted:
+            raise RuntimeError("AppDescriptionVectorizer not fitted")
+        processed = [self._preprocess_text(t) for t in texts]
+        return self._vectorizer.transform(processed).toarray()
+
+    def fit_transform(
+        self, texts: list[str], column_name: str = "appdesc"
+    ) -> np.ndarray:
+        """Fit and transform app descriptions."""
+        self.fit(texts, column_name)
+        return self.transform(texts)
+
+    def extract_keyword_features(self, texts: list[str]) -> np.ndarray:
+        """Extract binary keyword presence features."""
+        results = []
+        for text in texts:
+            processed = self._preprocess_text(text)
+            row = [1 if kw in processed else 0 for kw in self.BUSINESS_KEYWORDS]
+            results.append(row)
+        return np.array(results, dtype=np.int8)
+
+    @property
+    def feature_names(self) -> list[str]:
+        return self._feature_names
+
+    @property
+    def keyword_feature_names(self) -> list[str]:
+        return [f"appdesc_has_{kw}" for kw in self.BUSINESS_KEYWORDS]
+
+
+class ScanResultExtractor:
+    """
+    Extract features from scan_result field.
+
+    The scan_result field contains an array of classification tags like:
+    - "cname_ip_present"
+    - "rxdomain"
+    - "no_host_records"
+    - "http_unreachable"
+    """
+
+    KNOWN_SCAN_TAGS = [
+        "cname_ip_present",
+        "rxdomain",
+        "no_host_records",
+        "http_unreachable",
+        "https_unreachable",
+        "ssl_cert_error",
+        "timeout",
+        "dns_error",
+    ]
+
+    def extract_features(
+        self, df: pl.DataFrame, scan_result_column: str = "scan_result"
+    ) -> pl.DataFrame:
+        """
+        Extract binary features from scan_result array.
+
+        Args:
+            df: Input DataFrame
+            scan_result_column: Name of the scan result column
+
+        Returns:
+            DataFrame with binary scan result features
+        """
+        if scan_result_column not in df.columns:
+            # Add zero-filled columns if scan_result not present
+            for tag in self.KNOWN_SCAN_TAGS:
+                df = df.with_columns(
+                    pl.lit(0).cast(pl.Int8).alias(f"scan_{tag.replace('-', '_')}")
+                )
+            df = df.with_columns(pl.lit(0).cast(pl.Int8).alias("scan_count"))
+            return df
+
+        scan_values = df[scan_result_column].to_list()
+
+        # Create feature columns for each known tag
+        tag_features = {tag: [] for tag in self.KNOWN_SCAN_TAGS}
+        scan_counts = []
+
+        for scan_result in scan_values:
+            if scan_result is None:
+                scan_counts.append(0)
+                for tag in self.KNOWN_SCAN_TAGS:
+                    tag_features[tag].append(0)
+            elif isinstance(scan_result, (list, tuple)):
+                scan_counts.append(len(scan_result))
+                for tag in self.KNOWN_SCAN_TAGS:
+                    # Check if tag is present in the array
+                    found = any(tag in str(item).lower() for item in scan_result)
+                    tag_features[tag].append(1 if found else 0)
+            elif isinstance(scan_result, str):
+                # Handle string representation of array
+                scan_counts.append(1 if scan_result else 0)
+                for tag in self.KNOWN_SCAN_TAGS:
+                    tag_features[tag].append(1 if tag in scan_result.lower() else 0)
+            else:
+                scan_counts.append(0)
+                for tag in self.KNOWN_SCAN_TAGS:
+                    tag_features[tag].append(0)
+
+        # Add all feature columns
+        for tag in self.KNOWN_SCAN_TAGS:
+            safe_name = tag.replace("-", "_")
+            df = df.with_columns(
+                pl.Series(f"scan_{safe_name}", tag_features[tag]).cast(pl.Int8)
+            )
+
+        df = df.with_columns(pl.Series("scan_count", scan_counts).cast(pl.Int8))
+
+        return df
+
+    @property
+    def feature_names(self) -> list[str]:
+        """Return list of feature names this extractor generates."""
+        features = [f"scan_{tag.replace('-', '_')}" for tag in self.KNOWN_SCAN_TAGS]
+        features.append("scan_count")
+        return features
 
 
 class FQDNFeatureExtractor:
@@ -365,6 +566,11 @@ class FeatureEngineer:
         numerical_columns: list[str | None] = None,
         tfidf_max_features: int = 500,
         categorical_strategy: str = "label",
+        # New feature extraction options
+        enable_record_data_features: bool = True,
+        enable_appdesc_features: bool = True,
+        enable_scan_result_features: bool = True,
+        appdesc_max_features: int = 100,
     ):
         self.fqdn_column = fqdn_column
         self.text_columns = text_columns or [fqdn_column]
@@ -373,6 +579,13 @@ class FeatureEngineer:
         self.tfidf_max_features = tfidf_max_features
         self.categorical_strategy = categorical_strategy
 
+        # New feature options
+        self.enable_record_data_features = enable_record_data_features
+        self.enable_appdesc_features = enable_appdesc_features
+        self.enable_scan_result_features = enable_scan_result_features
+        self.appdesc_max_features = appdesc_max_features
+
+        # Extractors
         self.fqdn_extractor = FQDNFeatureExtractor()
         self.text_vectorizers: dict[str, TextVectorizer] = {}
         self.categorical_encoder: CategoricalEncoder | None = None
@@ -380,11 +593,36 @@ class FeatureEngineer:
         self._feature_names: list[str] = []
         self._fitted = False
 
+        # New extractors (lazy-loaded when needed)
+        self._record_data_extractor = None
+        self._appdesc_vectorizer: AppDescriptionVectorizer | None = None
+        self._scan_result_extractor = None
+
     def fit(
         self, df: pl.DataFrame, target: pl.Series | None = None
     ) -> "FeatureEngineer":
         logger.info("Fitting feature engineer...")
         df = self.fqdn_extractor.extract_features(df, self.fqdn_column)
+
+        # Apply record data extractor if enabled
+        if self.enable_record_data_features and "data" in df.columns:
+            from src.features.record_data_extractor import RecordDataExtractor
+
+            self._record_data_extractor = RecordDataExtractor()
+            df = self._record_data_extractor.extract_features(df)
+
+        # Apply scan result extractor if enabled
+        if self.enable_scan_result_features and "scan_result" in df.columns:
+            self._scan_result_extractor = ScanResultExtractor()
+            df = self._scan_result_extractor.extract_features(df)
+
+        # Fit app description vectorizer if enabled
+        if self.enable_appdesc_features and "appdesc" in df.columns:
+            self._appdesc_vectorizer = AppDescriptionVectorizer(
+                max_features=self.appdesc_max_features
+            )
+            appdesc_texts = df["appdesc"].fill_null("").to_list()
+            self._appdesc_vectorizer.fit(appdesc_texts, column_name="appdesc")
 
         for col in self.text_columns:
             if col in df.columns:
@@ -422,6 +660,15 @@ class FeatureEngineer:
             raise RuntimeError("Feature engineer not fitted")
 
         df = self.fqdn_extractor.extract_features(df, self.fqdn_column)
+
+        # Apply record data extractor if enabled
+        if self._record_data_extractor and "data" in df.columns:
+            df = self._record_data_extractor.extract_features(df)
+
+        # Apply scan result extractor if enabled
+        if self._scan_result_extractor and "scan_result" in df.columns:
+            df = self._scan_result_extractor.extract_features(df)
+
         feature_arrays = []
 
         # FQDN numerical features
@@ -449,6 +696,29 @@ class FeatureEngineer:
         ]
         if pattern_cols:
             feature_arrays.append(df.select(pattern_cols).fill_null(0).to_numpy())
+
+        # Record data features (from new extractor)
+        if self._record_data_extractor:
+            record_data_cols = [c for c in df.columns if c.startswith("data_")]
+            if record_data_cols:
+                feature_arrays.append(
+                    df.select(record_data_cols).fill_null(0).to_numpy()
+                )
+
+        # Scan result features
+        if self._scan_result_extractor:
+            scan_cols = [c for c in df.columns if c.startswith("scan_")]
+            if scan_cols:
+                feature_arrays.append(df.select(scan_cols).fill_null(0).to_numpy())
+
+        # App description TF-IDF features
+        if self._appdesc_vectorizer and "appdesc" in df.columns:
+            appdesc_texts = df["appdesc"].fill_null("").to_list()
+            feature_arrays.append(self._appdesc_vectorizer.transform(appdesc_texts))
+            # Also add keyword features
+            feature_arrays.append(
+                self._appdesc_vectorizer.extract_keyword_features(appdesc_texts)
+            )
 
         # Text features
         for col, vectorizer in self.text_vectorizers.items():
@@ -506,6 +776,20 @@ class FeatureEngineer:
             if c.startswith("fqdn_is_") or c.startswith("fqdn_region_")
         ]
         self._feature_names.extend(sorted(pattern_cols))
+
+        # Record data features
+        if self._record_data_extractor:
+            self._feature_names.extend(self._record_data_extractor.feature_names)
+
+        # Scan result features
+        if self._scan_result_extractor:
+            self._feature_names.extend(self._scan_result_extractor.feature_names)
+
+        # App description features
+        if self._appdesc_vectorizer:
+            self._feature_names.extend(self._appdesc_vectorizer.feature_names)
+            self._feature_names.extend(self._appdesc_vectorizer.keyword_feature_names)
+
         for vectorizer in self.text_vectorizers.values():
             self._feature_names.extend(vectorizer.feature_names)
         if self.categorical_encoder:

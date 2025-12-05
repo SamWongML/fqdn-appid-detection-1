@@ -4,8 +4,6 @@ Feature Pipeline Module
 Unified pipeline for feature processing combining all feature engineering components.
 """
 
-
-
 from pathlib import Path
 from typing import Any
 
@@ -15,10 +13,7 @@ import polars as pl
 
 from src.config.settings import get_settings
 from src.features.feature_engineer import (
-    CategoricalEncoder,
     FeatureEngineer,
-    FQDNFeatureExtractor,
-    TextVectorizer,
 )
 from src.utils.helpers import timer
 from src.utils.logger import get_logger
@@ -65,6 +60,7 @@ class FeaturePipeline:
         self.fqdn_column = fqdn_column
         self.target_column = target_column
         self.categorical_columns = categorical_columns or [
+            # Original columns
             "record_type",
             "fqdn_source",
             "fqdn_status",
@@ -76,6 +72,13 @@ class FeaturePipeline:
             "itso_id",
             "buslevel4",
             "buslevel5",
+            # New high-value columns from enriched data
+            "classification",  # interactive/non_interactive
+            "primary_channel",  # Web/Mail/API
+            "market_group",  # EMEA/APAC/Americas
+            "region",  # Europe/Asia Pacific/etc
+            "sub_brand",  # HSBC Trinkaus, HSBCnet, etc
+            "category",  # TBD-A&C, Email-Verification, etc
         ]
         self.numerical_columns = numerical_columns or []
         self.text_columns = text_columns or [fqdn_column]

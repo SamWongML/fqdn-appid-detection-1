@@ -106,13 +106,12 @@ class Trainer:
 
             # Enable autologging for supported libraries
             # This allows real-time metrics to be visible in MLflow UI
+            # Note: CatBoost doesn't have autolog support in MLflow
             try:
                 if hasattr(mlflow, "xgboost"):
                     mlflow.xgboost.autolog(log_models=False, silent=True)
                 if hasattr(mlflow, "lightgbm"):
                     mlflow.lightgbm.autolog(log_models=False, silent=True)
-                if hasattr(mlflow, "catboost"):
-                    mlflow.catboost.autolog(log_models=False, silent=True)
             except Exception as e:
                 logger.warning(f"Failed to enable autologging: {e}")
 

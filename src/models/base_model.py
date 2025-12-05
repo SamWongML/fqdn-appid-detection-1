@@ -148,7 +148,6 @@ class XGBoostModel(BaseModel):
             "reg_alpha": self.settings.reg_alpha,
             "reg_lambda": self.settings.reg_lambda,
             "max_delta_step": self.settings.max_delta_step,
-            "scale_pos_weight": self.settings.scale_pos_weight,
             "verbosity": self.settings.verbosity,
             "random_state": 42,
             "n_jobs": -1,
