@@ -688,18 +688,22 @@ class FeatureEngineer:
         if existing_fqdn_cols:
             feature_arrays.append(df.select(existing_fqdn_cols).fill_null(0).to_numpy())
 
-        # Pattern features
-        pattern_cols = [
-            c
-            for c in df.columns
-            if c.startswith("fqdn_is_") or c.startswith("fqdn_region_")
-        ]
+        # Pattern features (sorted to match _compile_feature_names)
+        pattern_cols = sorted(
+            [
+                c
+                for c in df.columns
+                if c.startswith("fqdn_is_") or c.startswith("fqdn_region_")
+            ]
+        )
         if pattern_cols:
             feature_arrays.append(df.select(pattern_cols).fill_null(0).to_numpy())
 
         # Record data features (from new extractor)
         if self._record_data_extractor:
-            record_data_cols = [c for c in df.columns if c.startswith("data_")]
+            record_data_cols = [
+                c for c in self._record_data_extractor.feature_names if c in df.columns
+            ]
             if record_data_cols:
                 feature_arrays.append(
                     df.select(record_data_cols).fill_null(0).to_numpy()
@@ -707,7 +711,9 @@ class FeatureEngineer:
 
         # Scan result features
         if self._scan_result_extractor:
-            scan_cols = [c for c in df.columns if c.startswith("scan_")]
+            scan_cols = [
+                c for c in self._scan_result_extractor.feature_names if c in df.columns
+            ]
             if scan_cols:
                 feature_arrays.append(df.select(scan_cols).fill_null(0).to_numpy())
 
@@ -777,13 +783,25 @@ class FeatureEngineer:
         ]
         self._feature_names.extend(sorted(pattern_cols))
 
-        # Record data features
+        # Record data features (filter to what exists in DataFrame)
         if self._record_data_extractor:
-            self._feature_names.extend(self._record_data_extractor.feature_names)
+            self._feature_names.extend(
+                [
+                    c
+                    for c in self._record_data_extractor.feature_names
+                    if c in df.columns
+                ]
+            )
 
-        # Scan result features
+        # Scan result features (filter to what exists in DataFrame)
         if self._scan_result_extractor:
-            self._feature_names.extend(self._scan_result_extractor.feature_names)
+            self._feature_names.extend(
+                [
+                    c
+                    for c in self._scan_result_extractor.feature_names
+                    if c in df.columns
+                ]
+            )
 
         # App description features
         if self._appdesc_vectorizer:
