@@ -97,7 +97,10 @@ class EnsembleModel(BaseModel):
         if not self._fitted:
             raise RuntimeError("Model not fitted")
         probas = [model.predict_proba(X) * weight for _, model, weight in self.models]
-        return np.sum(probas, axis=0)
+        combined = np.sum(probas, axis=0)
+        # Normalize to ensure probabilities sum to 1.0 (avoid floating-point precision issues)
+        row_sums = combined.sum(axis=1, keepdims=True)
+        return combined / row_sums
 
     def predict_with_confidence(
         self, X: np.ndarray, top_k: int = 5
